@@ -125,11 +125,17 @@ class BugzillaService(IssueService):
         # to pass that argument or not.
         self.advanced = asbool(self.config_get_default('advanced', 'no'))
 
-        self.password = self.config_get_password('password', self.username)
-
         url = 'https://%s/xmlrpc.cgi' % self.base_uri
-        self.bz = bugzilla.Bugzilla(url=url)
-        self.bz.login(self.username, self.password)
+        api_key = self.config_get_default('api_key', default=None)
+        if api_key:
+            try:
+                self.bz = bugzilla.Bugzilla(url=url, api_key=api_key)
+            except TypeError:
+                raise Exception("This version of python-bugzilla does not support api keys")
+        else:
+            password = self.config_get_password('password', self.username)
+            self.bz = bugzilla.Bugzilla(url=url)
+            self.bz.login(self.username, password)
 
     @classmethod
     def get_keyring_service(cls, config, section):
@@ -139,10 +145,14 @@ class BugzillaService(IssueService):
 
     @classmethod
     def validate_config(cls, config, target):
-        req = ['bugzilla.username', 'bugzilla.password', 'bugzilla.base_uri']
-        for option in req:
-            if not config.has_option(target, option):
-                die("[%s] has no '%s'" % (target, option))
+        keys = ['username', 'password', 'api_key', 'base_uri']
+        have = {key: config.has_option(target, 'bugzilla.' + key) for key in keys}
+        if not have['base_uri']:
+            die("[%s] has no 'bugzilla.base_uri'" % (target,))
+        if not have['username']:
+            die("[%s] has no 'bugzilla.username'" % (target,))
+        if not (have['password'] or have['api_key']):
+            die("[%s] has no 'bugzilla.password' or 'bugzilla.api_key'" % (target,))
 
         super(BugzillaService, cls).validate_config(config, target)
 
